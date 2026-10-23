@@ -10,12 +10,22 @@ def main():
     pitches = pd.read_csv(DATA_DIR / "dylan_cease_2025.csv")
     original_count = len(pitches)
 
-    # Without the actual pitch type, a row has no training answer.
-    pitches = pitches.dropna(subset=["pitch_type"]).copy()
-
     pitches = pitches.sort_values(
         ["game_date", "game_pk", "at_bat_number", "pitch_number"]
-    )
+    ).copy()
+
+    # Stay within each plate appearance so sequences don't cross batters.
+    previous_pitch = pitches.groupby(
+        ["game_pk", "at_bat_number"]
+    )["pitch_type"].shift(1)
+
+    # Distinguish a new plate appearance from an unrecorded pitch type.
+    pitches["previous_pitch"] = previous_pitch.fillna("UNKNOWN")
+    pitches.loc[pitches["pitch_number"] == 1, "previous_pitch"] = "START"
+
+    # Build sequences before removing unlabeled rows; otherwise "previous"
+    # could accidentally refer to a pitch two positions earlier.
+    pitches = pitches.dropna(subset=["pitch_type"]).copy()
 
     # Keep dates and game IDs so we can later test on newer games
     # without splitting one game's pitches across training and testing.
@@ -27,6 +37,7 @@ def main():
         "stand",
         "inning",
         "outs_when_up",
+        "previous_pitch",
         "pitch_type",
     ]
 
@@ -36,12 +47,13 @@ def main():
 
     print(f"Removed {original_count - len(model_data)} unlabeled records.")
     print(f"Saved {len(model_data):,} labeled pitches.")
-    print("\nFirst five rows:")
-    print(model_data.head().to_string(index=False))
 
-    print("\nTarget pitch types:")
-    print(model_data["pitch_type"].value_counts())
-
+    print("\nSequence preview:")
+    print(
+        model_data[
+            ["balls", "strikes", "previous_pitch", "pitch_type"]
+        ].head(12).to_string(index=False)
+    )
 
 if __name__ == "__main__":
     main()

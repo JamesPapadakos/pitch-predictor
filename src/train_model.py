@@ -11,7 +11,7 @@ from sklearn.tree import DecisionTreeClassifier
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
-FEATURES = ["balls", "strikes", "stand", "inning", "outs_when_up"]
+FEATURES = ["balls", "strikes", "stand", "inning", "outs_when_up", "previous_pitch"]
 TARGET = "pitch_type"
 
 
@@ -43,7 +43,7 @@ def main():
 
     preprocessing = ColumnTransformer(
         transformers=[
-            ("handedness", OneHotEncoder(handle_unknown="ignore"), ["stand"])
+            ("categories", OneHotEncoder(handle_unknown="ignore"), ["stand", "previous_pitch"])
         ],
         remainder="passthrough",
     )
@@ -85,6 +85,15 @@ def main():
 
     print("\nValidation results by pitch type:")
     print(classification_report(y_validation, predictions, zero_division=0))
+
+    # Show whether rare pitches are never predicted or are predicted incorrectly.
+    prediction_counts = pd.DataFrame({
+        "actual": y_validation.value_counts(),
+        "predicted": pd.Series(predictions).value_counts(),
+    }).fillna(0).astype(int)
+
+    print("\nActual versus predicted pitch counts:")
+    print(prediction_counts.to_string())
 
 
 if __name__ == "__main__":
