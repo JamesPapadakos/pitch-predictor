@@ -41,6 +41,25 @@ def main():
     baseline.fit(X_train, y_train)
     baseline_predictions = baseline.predict(X_validation)
 
+    situation_columns = ["balls", "strikes", "stand"]
+
+    # Learn the lookup from training games so validation answers stay unseen.
+    situation_lookup = (
+        training.groupby(situation_columns)[TARGET]
+        .agg(lambda pitches: pitches.mode().iloc[0])
+        .to_dict()
+    )
+
+    # An unseen situation needs a fallback learned from the same training data.
+    fallback_pitch = y_train.mode().iloc[0]
+
+    situational_predictions = [
+        situation_lookup.get(situation, fallback_pitch)
+        for situation in X_validation[situation_columns].itertuples(
+            index=False, name=None
+        )
+    ]
+
     preprocessing = ColumnTransformer(
         transformers=[
             ("categories", OneHotEncoder(handle_unknown="ignore"), ["stand", "previous_pitch"])
@@ -80,6 +99,11 @@ def main():
 
     print(f"\nBaseline prediction: {baseline.classes_[baseline.class_prior_.argmax()]}")
     print(f"Baseline validation accuracy: {baseline_accuracy:.1%}")
+    situational_accuracy = accuracy_score(
+        y_validation, situational_predictions
+    )
+    print(f"Situational baseline validation accuracy: {situational_accuracy:.1%}")
+
     print(f"Model training accuracy: {model.score(X_train, y_train):.1%}")
     print(f"Model validation accuracy: {model_accuracy:.1%}")
 
