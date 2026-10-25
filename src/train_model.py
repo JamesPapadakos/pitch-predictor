@@ -7,6 +7,7 @@ from sklearn.metrics import accuracy_score, classification_report
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, classification_report, log_loss
 
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
@@ -120,6 +121,73 @@ def main():
 
     print("\nActual versus predicted pitch counts:")
     print(prediction_counts.to_string())
+
+    # Use the model's class order for every probability comparison.
+    classes = model.classes_
+    model_probabilities = model.predict_proba(X_validation)
+
+    # Compare against training frequencies, rather than assigning slider 100%.
+    frequency_baseline = DummyClassifier(strategy="prior")
+    frequency_baseline.fit(X_train, y_train)
+
+    frequency_probabilities = pd.DataFrame(
+        frequency_baseline.predict_proba(X_validation),
+        columns=frequency_baseline.classes_,
+    )[classes].to_numpy()
+
+    training_frequencies = (
+        y_train.value_counts(normalize=True)
+        .reindex(classes, fill_value=0)
+    )
+
+    situation_columns = ["balls", "strikes", "stand"]
+    probability_lookup = {}
+
+    for situation, group in training.groupby(situation_columns):
+        counts = group[TARGET].value_counts().reindex(classes, fill_value=0)
+
+        # Blend in 10 pitches' worth of overall training frequencies so small
+        # groups don't declare a possible pitch impossible after zero examples.
+        probabilities = (
+            counts + 10 * training_frequencies
+        ) / (len(group) + 10)
+
+        probability_lookup[situation] = probabilities.to_numpy()
+
+    # Fall back to overall training frequencies for an unseen situation.
+    situational_probabilities = [
+        probability_lookup.get(
+            situation,
+            training_frequencies.to_numpy(),
+        )
+        for situation in X_validation[situation_columns].itertuples(
+            index=False, name=None
+        )
+    ]
+
+    print("\nValidation log loss (lower is better):")
+
+    probability_predictions = {
+        "Training-frequency baseline": frequency_probabilities,
+        "Smoothed situational baseline": situational_probabilities,
+        "Random forest": model_probabilities,
+    }
+
+    # An unseen target class needs explicit handling rather than a misleading score.
+    unseen_classes = set(y_validation) - set(classes)
+
+    if unseen_classes:
+        print(f"Cannot score yet: unseen pitch types {sorted(unseen_classes)}")
+    else:
+        for name, probabilities in probability_predictions.items():
+            loss = log_loss(y_validation, probabilities, labels=classes)
+            print(f"{name}: {loss:.3f}")
+
+    preview = pd.DataFrame(model_probabilities[:5], columns=classes)
+    preview.insert(0, "actual", y_validation.iloc[:5].to_numpy())
+
+    print("\nProbabilities for the first five validation pitches:")
+    print(preview.round(3).to_string(index=False))
 
 
 if __name__ == "__main__":
