@@ -27,6 +27,14 @@ def main():
     # could accidentally refer to a pitch two positions earlier.
     pitches = pitches.dropna(subset=["pitch_type"]).copy()
 
+    # Base columns contain runner IDs; occupancy is enough for this first model.
+    for base in ["1b", "2b", "3b"]:
+        pitches[f"runner_on_{base}"] = pitches[f"on_{base}"].notna().astype(int)
+
+    # Use the pitching team's perspective so the sign has a consistent meaning.
+    # Pre-pitch scores avoid revealing what happens on the pitch being predicted.
+    pitches["score_difference"] = pitches["fld_score"] - pitches["bat_score"]
+
     # Keep dates and game IDs so we can later test on newer games
     # without splitting one game's pitches across training and testing.
     columns = [
@@ -38,6 +46,10 @@ def main():
         "inning",
         "outs_when_up",
         "previous_pitch",
+        "runner_on_1b",
+        "runner_on_2b",
+        "runner_on_3b",
+        "score_difference",
         "pitch_type",
     ]
 

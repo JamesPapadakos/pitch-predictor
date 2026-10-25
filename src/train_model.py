@@ -6,12 +6,12 @@ from sklearn.dummy import DummyClassifier
 from sklearn.metrics import accuracy_score, classification_report
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
-from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
 
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 
-FEATURES = ["balls", "strikes", "stand", "inning", "outs_when_up", "previous_pitch"]
+FEATURES = ["balls", "strikes", "stand", "inning", "outs_when_up", "previous_pitch",]
 TARGET = "pitch_type"
 
 
@@ -67,16 +67,18 @@ def main():
         remainder="passthrough",
     )
 
-    # Limit complexity to reduce memorization of small historical samples.
+    # Average across trees to reduce reliance on one tree's particular splits.
     model = Pipeline(
         steps=[
             ("preprocessing", preprocessing),
             (
                 "classifier",
-                DecisionTreeClassifier(
-                    max_depth=4,
-                    min_samples_leaf=30,
+                RandomForestClassifier(
+                    n_estimators=200,
+                    max_depth=6,
+                    min_samples_leaf=20,
                     random_state=42,
+                    n_jobs=-1,
                 ),
             ),
         ]
