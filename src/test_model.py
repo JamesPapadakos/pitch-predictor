@@ -9,6 +9,9 @@ from validate_model import (
     evaluate,
 )
 
+from pathlib import Path
+import joblib
+
 
 def main():
     data = pd.read_csv(DATA_DIR / "dylan_cease_2025_prepared.csv")
@@ -73,6 +76,24 @@ def main():
 
     print("\nActual versus predicted pitch counts:")
     print(prediction_counts.to_string())
+
+    # Preserve the evaluated model without fitting it on the test games.
+    models_dir = Path(__file__).resolve().parent.parent / "models"
+    models_dir.mkdir(parents=True, exist_ok=True)
+
+    model_path = models_dir / "dylan_cease_v1.joblib"
+
+    joblib.dump(
+        {
+            "model": model,
+            "features": FEATURES.copy(),
+            "pitcher_id": 656302,
+            "training_games": games[:25],
+        },
+        model_path,
+    )
+
+    print(f"\nSaved model to {model_path}")
 
 
 if __name__ == "__main__":
