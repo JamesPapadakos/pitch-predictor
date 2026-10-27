@@ -1,14 +1,4 @@
-from pathlib import Path
-
-import joblib
-import pandas as pd
-
-
-MODEL_PATH = (
-    Path(__file__).resolve().parent.parent
-    / "models"
-    / "dylan_cease_v1.joblib"
-)
+from pitch_predictor import predict_pitch_probabilities
 
 PITCH_NAMES = {
     "CH": "Changeup",
@@ -48,13 +38,6 @@ def get_choice(prompt, choices):
         print(f"Please enter one of: {', '.join(choices)}")
 
 def main():
-    if not MODEL_PATH.exists():
-        print("Run test_model.py first to save the model.")
-        return
-
-    bundle = joblib.load(MODEL_PATH)
-    model = bundle["model"]
-
     print("Enter the current game situation:")
 
     balls = get_number("Balls (0–3): ", 0, 3)
@@ -92,18 +75,13 @@ def main():
         "previous_pitch": previous_pitch,
     }
 
-    # Use the saved feature order to match the model's training inputs.
-    inputs = pd.DataFrame([situation])[bundle["features"]]
-    probabilities = model.predict_proba(inputs)[0]
+    try:
+        results = predict_pitch_probabilities(situation)
+    except FileNotFoundError as error:
+        print(error)
+        return
 
-    # Match probability columns to the model's own class labels.
-    results = sorted(
-        zip(model.classes_, probabilities),
-        key=lambda result: result[1],
-        reverse=True,
-    )
-
-    print("Dylan Cease — estimated next-pitch probabilities")
+    print("Dylan Cease — estimated next-pitch Dprobabilities")
     print(
         f"Count: {situation['balls']}-{situation['strikes']} | "
         f"Batter: {situation['stand']} | "

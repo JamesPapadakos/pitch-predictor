@@ -2,3 +2,5 @@ pandas
 pybaseball
 scikit-learn
 joblib
+fastapi
+uvicorn
