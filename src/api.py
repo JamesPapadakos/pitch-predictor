@@ -15,7 +15,7 @@ class PitchSituation(BaseModel):
     stand: Literal["L", "R"]
     inning: int = Field(ge=1)
     outs_when_up: int = Field(ge=0, le=2)
-    previous_pitch: Literal["START", "UNKNOWN", "CH", "FF", "KC", "SI", "SL", "ST"]
+    previous_pitch: Literal["START", "UNKNOWN", "CH", "FC", "FF", "KC", "SI", "SL", "ST"]
 
 
 @app.get("/")
@@ -30,7 +30,7 @@ def predict(situation: PitchSituation):
     except FileNotFoundError:
         raise HTTPException(
             status_code=503,
-            detail="Saved model not found. Run test_model.py first.",
+            detail="Saved model not found. Run python src/train_model.py first.",
         )
 
     return {

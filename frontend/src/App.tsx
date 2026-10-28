@@ -12,6 +12,7 @@ const pitchNames: Record<string, string> = {
   SL: "Slider",
   KC: "Knuckle curve",
   CH: "Changeup",
+  FC: "Cutter",
   SI: "Sinker",
   ST: "Sweeper",
 }
@@ -162,7 +163,7 @@ function App() {
               </div>
             ))}
             <p className="note">
-              Estimates from a model trained on Dylan Cease’s 2025 games.
+              Estimates from a model trained on Dylan Cease’s 2022–2026 games with more weight on recent pitches.
               Probabilities are not guarantees.
             </p>
           </>

@@ -2,6 +2,7 @@ from pitch_predictor import predict_pitch_probabilities
 
 PITCH_NAMES = {
     "CH": "Changeup",
+    "FC": "Cutter",
     "FF": "Four-seam fastball",
     "KC": "Knuckle curve",
     "SI": "Sinker",

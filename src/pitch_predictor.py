@@ -7,7 +7,7 @@ import pandas as pd
 MODEL_PATH = (
     Path(__file__).resolve().parent.parent
     / "models"
-    / "dylan_cease_v1.joblib"
+    / "dylan_cease_v2.joblib"
 )
 
 
@@ -16,7 +16,7 @@ def predict_pitch_probabilities(situation):
 
     if not MODEL_PATH.exists():
         raise FileNotFoundError(
-            "Saved model not found. Run test_model.py to create it."
+            "Saved model not found. Run python src/train_model.py to create it."
         )
 
     bundle = joblib.load(MODEL_PATH)
