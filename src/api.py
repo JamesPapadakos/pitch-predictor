@@ -3,8 +3,7 @@ from typing import Literal
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from pitch_predictor import predict_pitch_probabilities
-
+from src.pitch_predictor import predict_pitch_probabilities
 
 app = FastAPI(title="Pitch Predictor API")
 
@@ -30,7 +29,7 @@ def predict(situation: PitchSituation):
     except FileNotFoundError:
         raise HTTPException(
             status_code=503,
-            detail="Saved model not found. Run python src/train_model.py first.",
+            detail="Saved model not found. Run python -m scripts.train first.",
         )
 
     return {
