@@ -2,6 +2,8 @@
 
 A full-stack machine learning app that estimates Dylan Cease's next pitch type from the current game situation. A React and TypeScript frontend sends inputs to a FastAPI backend, which returns probabilities from a saved random forest model.
 
+![Pitch Predictor interface](docs/pitch-predictor.png)
+
 ## Features
 
 - Enter the count, batter handedness, inning, outs, and previous pitch.
