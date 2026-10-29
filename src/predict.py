@@ -1,4 +1,4 @@
-from pitch_predictor import predict_pitch_probabilities
+from src.pitch_predictor import predict_pitch_probabilities
 
 PITCH_NAMES = {
     "CH": "Changeup",

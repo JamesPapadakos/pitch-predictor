@@ -1,28 +1,19 @@
-from pathlib import Path
-
 import joblib
 import pandas as pd
 
-
-MODEL_PATH = (
-    Path(__file__).resolve().parent.parent
-    / "models"
-    / "dylan_cease_v2.joblib"
-)
+from src.model import MODEL_PATH
 
 
 def predict_pitch_probabilities(situation):
-    """Return pitch codes and probabilities for a game situation."""
-
     if not MODEL_PATH.exists():
         raise FileNotFoundError(
-            "Saved model not found. Run python src/train_model.py to create it."
+            "Saved model not found. Run python -m scripts.train first."
         )
 
     bundle = joblib.load(MODEL_PATH)
     model = bundle["model"]
 
-    # Match the feature names and order used when the model was trained.
+    # Preserve the feature order expected by the saved pipeline.
     inputs = pd.DataFrame([situation])[bundle["features"]]
     probabilities = model.predict_proba(inputs)[0]
 

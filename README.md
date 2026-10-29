@@ -1,97 +1,95 @@
 # Pitch Predictor
 
-A full-stack machine learning app that estimates Dylan Cease's next pitch type from the current game situation. A React and TypeScript frontend sends inputs to a FastAPI backend, which returns probabilities from a saved random forest model.
+A machine learning application that estimates Dylan Cease’s next pitch type from the current game situation.
+
+The project includes a React interface, a FastAPI backend, and a reproducible workflow for downloading pitch data, training a model, and evaluating its predictions.
 
 ## Features
 
-- Enter the count, batter handedness, inning, outs, and previous pitch.
-- View estimated probabilities for each pitch type as horizontal bars.
-- Automatically use `START` for the previous pitch at a 0–0 count.
-- Use the predictor through the web app, API, or interactive terminal script.
-- Download historical pitch data and reproduce data preparation, training, and evaluation.
+- Predict pitch-type probabilities from:
+  - Balls and strikes
+  - Batter handedness
+  - Inning
+  - Outs
+  - Previous pitch type
+- View ranked probabilities through a web interface or terminal.
+- Download and cache MLB Statcast data.
+- Train using five seasons of data with greater weight on recent pitches.
+- Evaluate predictions chronologically against simple baselines.
+- Inspect performance by pitch type, count, and game.
 
-## Tech stack
+## Tech Stack
 
-| Area | Tools |
+| Component | Technology |
 | --- | --- |
-| Data | Python, pandas, pybaseball, Baseball Savant / Statcast |
-| Machine learning | scikit-learn, random forest |
+| Data collection | MLB Statcast through pybaseball |
+| Data preparation | pandas |
+| Machine learning | scikit-learn |
 | Model persistence | joblib |
-| Backend | FastAPI, Uvicorn |
-| Frontend | React, TypeScript, Vite, CSS |
-| Code checks | TypeScript compiler, ESLint |
+| Backend | FastAPI |
+| Frontend | React, TypeScript, Vite |
 
-## Model and data
+## Model
 
-The first version uses Dylan Cease's 2025 regular-season data: 3,052 records across 32 games. Removing 8 records without pitch-type labels leaves 3,044 labeled pitches.
+The application uses a recency-weighted random forest with:
 
-The model uses six inputs:
+- 200 trees
+- Maximum tree depth of 6
+- Minimum leaf size of 20 samples
+- One-hot encoding for batter handedness and previous pitch type
+- A fixed random seed for reproducibility
 
-| Input | Description |
-| --- | --- |
-| `balls` | Balls before the pitch, from 0 to 3 |
-| `strikes` | Strikes before the pitch, from 0 to 2 |
-| `stand` | Batter's side of the plate: `L` or `R` |
-| `inning` | Current inning |
-| `outs_when_up` | Outs before the pitch, from 0 to 2 |
-| `previous_pitch` | Previous pitch type in the same plate appearance, `START`, or `UNKNOWN` |
+Training uses regular-season pitches from **2022–2026**, with a one-year weighting half-life. A pitch that is 365 days older receives half as much weight.
 
-Previous-pitch features are created in chronological order within each plate appearance, before removing unlabeled records. Current-pitch measurements such as speed, spin, and location are excluded because they would not be available before the pitch.
+The current data snapshot was requested through **October 27, 2026**. Training includes available pitches before October 28, 2026. The application does not automatically download live data or retrain.
 
-The random forest uses 200 trees, maximum depth 6, minimum leaf size 20, and random seed 42. Categorical inputs are encoded inside the saved preprocessing pipeline.
-
-## Evaluation
-
-Games are split chronologically and kept whole. Initial development used 19 games for training and the following 6 for validation. Additional expanding-window checks trained on games 1–10, 1–15, and 1–20, validating on the following five games each time.
-
-Across those three development windows, the random forest achieved 51.1% combined accuracy versus 47.0% for a smoothed count-and-handedness baseline. These are development results, not an independent final test.
-
-For the final evaluation, the model trained on the first 25 games (2,360 pitches) and was evaluated on the last 7 games (684 pitches), dated August 21 through September 24, 2025.
-
-| Predictor | Final test accuracy ↑ | Final test log loss ↓ |
-| --- | ---: | ---: |
-| Training-frequency baseline | 31.6% | 1.476 |
-| Smoothed count-and-handedness baseline | 35.5% | 1.434 |
-| Random forest | **40.1%** | **1.398** |
-
-The forest improves accuracy by 4.6 percentage points over the situational baseline. Lower log loss indicates better probability predictions on this test set; it does not by itself establish probability calibration.
-
-These figures document the original evaluation. Download revisions or different dependency versions may produce slightly different results. The final test games have now been inspected; improvements informed by them require fresh held-out data for another independent evaluation.
-
-## Project structure
+The saved model is stored locally at:
 
 ```text
-pitch-predictor/
-├── data/                       # Generated datasets; ignored by Git
-├── models/                     # Saved model files; .joblib files ignored
-├── src/
-│   ├── download_data.py
-│   ├── inspect_data.py
-│   ├── prepare_data.py
-│   ├── train_model.py
-│   ├── validate_model.py
-│   ├── test_model.py
-│   ├── pitch_predictor.py       # Reusable prediction function
-│   ├── predict.py               # Interactive terminal interface
-│   └── api.py                   # FastAPI application
-├── frontend/
-│   ├── src/
-│   │   ├── App.tsx
-│   │   ├── App.css
-│   │   └── index.css
-│   ├── package.json
-│   ├── package-lock.json
-│   └── vite.config.ts
-├── requirements.txt
-├── .gitignore
-└── README.md
+models/dylan_cease_v2.joblib
 ```
 
-## Local setup
+## Evaluation Results
 
-Requires Python 3.10 or later, Node.js compatible with the project's Vite version, and npm. Internet access is needed to install dependencies and download pitch data.
+A retrospective 2026 simulation evaluated **2,895 pitches across 29 games**. Before each game, the updated predictors learned only from pitches on earlier dates.
 
-Clone this repository, open its root folder in a terminal, and create a Python environment:
+| Predictor | Accuracy | Log loss ↓ |
+| --- | ---: | ---: |
+| Frozen random forest | 38.9% | 1.592 |
+| Updated random forest | **39.1%** | **1.467** |
+| Frozen situational baseline | 38.6% | 1.620 |
+| Updated situational baseline | 38.4% | 1.475 |
+
+The situational baseline estimates pitch probabilities using the count and batter handedness, with recency weighting and smoothing.
+
+Accuracy measures how often the most likely pitch matches the actual pitch. Log loss evaluates the full probability distribution; lower values are better.
+
+These results show a modest improvement over the updated situational baseline. They describe the game-by-game simulation, not an independent evaluation of the final model trained on all available data.
+
+The 2026 results were examined during development, so they should be treated as retrospective evidence rather than an untouched final test.
+
+## Project Structure
+
+| Location | Purpose |
+| --- | --- |
+| `src/api.py` | API routes and request validation |
+| `src/pitch_predictor.py` | Load the saved model and produce probabilities |
+| `src/predict.py` | Interactive terminal predictions |
+| `src/data.py` | Prepare pitch sequences and load training data |
+| `src/model.py` | Model configuration, weighting, training, and saving |
+| `src/evaluation.py` | Season simulation, baselines, and diagnostics |
+| `scripts/data.py` | Download cached data and prepare the training snapshot |
+| `scripts/train.py` | Train and save the deployment model |
+| `scripts/evaluate.py` | Run evaluation or inspect saved predictions |
+| `frontend/` | React interface |
+| `data/` | Local datasets and evaluation outputs |
+| `models/` | Local saved models |
+
+## Local Setup
+
+### 1. Create a Python environment
+
+Run these commands from the project root:
 
 ```bash
 python -m venv .venv
@@ -109,44 +107,48 @@ Or on macOS/Linux:
 source .venv/bin/activate
 ```
 
-Use `python3` instead of `python` when needed to create the environment. Install the Python dependencies:
+Install the Python dependencies:
 
 ```bash
 python -m pip install -r requirements.txt
 ```
 
-### Generate the dataset and saved model
-
-Run these commands from the repository root, in order:
+### 2. Prepare data and train
 
 ```bash
-python src/download_data.py
-python src/prepare_data.py
-python src/test_model.py
+python -m scripts.data
+python -m scripts.train
 ```
 
-The last command trains on the first 25 games, reports results on the last 7, and saves `models/dylan_cease_v1.joblib`. Data and model files must be generated on a fresh clone because they are excluded from Git. Repeating the evaluation does not make it a new independent test.
+The data command reuses cached downloads when available and creates:
 
-Optional inspection and development evaluation:
+```text
+data/dylan_cease_2022_2026_prepared.csv
+```
+
+The training command saves the model to:
+
+```text
+models/dylan_cease_v2.joblib
+```
+
+Downloading requires internet access. Datasets and model artifacts are not included in the repository.
+
+If you already have the saved v2 model locally, you can skip this step to run the app.
+
+### 3. Start the backend
+
+From the project root:
 
 ```bash
-python src/inspect_data.py
-python src/train_model.py
-python src/validate_model.py
+python -m uvicorn src.api:app --reload
 ```
 
-### Start the backend
+Interactive API documentation is available at:
 
-From the repository root with the Python environment active:
+http://127.0.0.1:8000/docs
 
-```bash
-python -m uvicorn api:app --app-dir src --reload
-```
-
-- Backend: http://127.0.0.1:8000
-- Interactive API documentation: http://127.0.0.1:8000/docs
-
-### Start the frontend
+### 4. Start the frontend
 
 In a second terminal:
 
@@ -156,67 +158,77 @@ npm ci
 npm run dev
 ```
 
-Open the URL printed by Vite, usually http://localhost:5173. Keep both servers running while using the app.
+Open the local URL printed by Vite.
 
-The Vite development proxy forwards `/api/predict` to the backend's `/predict` endpoint. Production hosting will need its own API routing configuration.
+The frontend development server forwards `/api` requests to the backend on port 8000. Both servers must be running for web predictions.
 
-### Terminal predictor
+The development environment used Node.js 24.
 
-From the repository root with the Python environment active:
+## Terminal Predictions
+
+With the Python environment active, run from the project root:
 
 ```bash
-python src/predict.py
+python -m src.predict
 ```
 
-Follow the prompts to enter a situation and receive pitch probabilities.
+Enter the game situation when prompted to receive ranked pitch probabilities.
 
-## API example
+## Evaluation
 
-Send a `POST` request to `/predict` with this JSON body:
+Run the chronological simulation and prediction diagnostics:
 
-```json
-{
-  "balls": 1,
-  "strikes": 2,
-  "stand": "L",
-  "inning": 6,
-  "outs_when_up": 1,
-  "previous_pitch": "FF"
-}
+```bash
+python -m scripts.evaluate
 ```
 
-The response contains `pitcher` and a `probabilities` array. Each array item contains `pitch_type` and `probability`, sorted from highest to lowest probability. Probabilities are decimals: `0.429` represents 42.9%.
+Inspect existing evaluation outputs without retraining the simulation models:
 
-Pitch codes: `FF` = four-seam fastball, `SL` = slider, `KC` = knuckle curve, `CH` = changeup, `SI` = sinker, and `ST` = sweeper.
+```bash
+python -m scripts.evaluate --diagnostics-only
+```
 
-## Frontend checks
+Evaluation produces:
 
-From `frontend/`:
+- `data/season_simulation_summary.csv`
+- `data/season_simulation_by_game.csv`
+- `data/season_simulation_predictions.csv`
+- `data/diagnostics_by_count.csv`
+
+Evaluation does not overwrite the application’s saved model.
+
+## Frontend Checks
+
+Run from the `frontend` directory:
 
 ```bash
 npm run build
 npm run lint
 ```
 
-Manual checks include submitting a prediction, checking the 0–0 previous-pitch behavior, and confirming that a failed backend request displays an error.
-
 ## Limitations
 
-- The model covers one pitcher and one season. It does not currently support selecting a specific batter or another pitcher.
-- In the original final test, only fastball and slider were selected as top predictions. No other pitch types were correctly identified, although they received nonzero probabilities.
-- Rare situations can have very few examples. Overall accuracy does not guarantee reliable estimates at every count or matchup.
-- Probabilities have not been calibrated. A displayed 60% estimate is not a verified 60% real-world frequency.
-- The interfaces assume a 0–0 count starts a plate appearance. Unusual count changes and automatic ball/strike events are not fully modeled.
-- Inputs are entered manually; live game data is not connected.
+- The current application supports Dylan Cease only.
+- Batter handedness is included, but individual batter identity is not.
+- The model’s most likely predictions strongly favor fastballs and sliders.
+- Estimates for less common pitches and rare counts can be unreliable.
+- Pitch probabilities have not been established as calibrated.
+- Pitcher tendencies can change over time.
+- Dependency versions and revisions to source data can affect retraining results.
 
-## Possible next steps
+## Possible Next Steps
 
-- Add more seasons and evaluate on fresh games.
-- Compare models and inspect performance by count and pitch type.
-- Add more pitchers and batter-specific information.
+- Support additional pitchers and individual batter information.
+- Evaluate on newly available games.
+- Improve probability estimates for less common pitches and rare counts.
 - Improve reproducibility through dependency pinning and dataset versioning.
 - Deploy the frontend and backend.
 
-## Data source
+## Data Source
 
-Historical pitch data comes from [Baseball Savant's Statcast database](https://baseballsavant.mlb.com/statcast_search), retrieved using [pybaseball](https://github.com/jldbc/pybaseball). Field definitions are available in the [Statcast CSV documentation](https://baseballsavant.mlb.com/csv-docs).
+Historical pitch data comes from
+[Baseball Savant’s Statcast database](https://baseballsavant.mlb.com/statcast_search),
+retrieved using [pybaseball](https://github.com/jldbc/pybaseball).
+
+Field definitions are available in the
+[Statcast CSV documentation](https://baseballsavant.mlb.com/csv-docs).
