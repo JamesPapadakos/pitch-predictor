@@ -3,5 +3,6 @@ __pycache__/
 *.pyc
 .env
 data/
-models/*.joblib
+models/*
+!models/dylan_cease_v2.joblib
 .pytest_cache/

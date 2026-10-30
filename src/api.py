@@ -1,3 +1,6 @@
+import os 
+from fastapi.middleware.cors import CORSMiddleware
+
 from typing import Literal
 
 from fastapi import FastAPI, HTTPException
@@ -6,6 +9,21 @@ from pydantic import BaseModel, Field
 from src.pitch_predictor import predict_pitch_probabilities
 
 app = FastAPI(title="Pitch Predictor API")
+allowed_origins = [
+    origin.strip().rstrip("/")
+    for origin in os.getenv(
+        "CORS_ORIGINS",
+        "http://localhost:5173,http://127.0.0.1:5173",
+    ).split(",")
+    if origin.strip()
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+)
 
 
 class PitchSituation(BaseModel):

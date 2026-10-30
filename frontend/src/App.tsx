@@ -17,6 +17,10 @@ const pitchNames: Record<string, string> = {
   ST: "Sweeper",
 }
 
+const API_BASE_URL = (
+  import.meta.env.VITE_API_BASE_URL || "/api"
+).replace(/\/+$/, "")
+
 function App() {
   const [balls, setBalls] = useState(1)
   const [strikes, setStrikes] = useState(2)
@@ -38,7 +42,7 @@ function App() {
     setPredictions([])
 
     try {
-      const response = await fetch("/api/predict", {
+      const response = await fetch(`${API_BASE_URL}/predict`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
