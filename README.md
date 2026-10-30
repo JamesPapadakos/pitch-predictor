@@ -208,6 +208,18 @@ npm run build
 npm run lint
 ```
 
+## Automated Tests
+
+Install development dependencies and run the tests:
+
+```bash
+python -m pip install -r requirements-dev.txt
+python -m pytest -q
+```
+
+Tests cover pitch sequencing, duplicate detection, recency weighting,
+API responses, invalid inputs, and missing-model handling.
+
 ## Limitations
 
 - The current application supports Dylan Cease only.
