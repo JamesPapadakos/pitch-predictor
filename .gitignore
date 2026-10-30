@@ -4,3 +4,4 @@ __pycache__/
 .env
 data/
 models/*.joblib
+.pytest_cache/
