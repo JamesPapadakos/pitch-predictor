@@ -4,6 +4,8 @@ A machine learning application that estimates Dylan Cease’s next pitch type fr
 
 The project includes a React interface, a FastAPI backend, and a reproducible workflow for downloading pitch data, training a model, and evaluating its predictions.
 
+**[Try the live demo](https://pitch-predictor-slfm.onrender.com/)**
+The free backend may take about a minute to wake up after inactivity.
 ![Pitch Predictor interface](docs/pitch-predictor.png)
 
 ## Features
