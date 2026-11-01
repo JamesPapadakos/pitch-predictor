@@ -1,10 +1,19 @@
-import { useState } from "react"
-import type { FormEvent } from "react"
+import { useEffect, useState } from "react"
+import type { SubmitEvent } from "react"
 import "./App.css"
 
 type Prediction = {
   pitch_type: string
   probability: number
+}
+
+type Situation = {
+  balls: number
+  strikes: number
+  stand: string
+  inning: number
+  outs_when_up: number
+  previous_pitch: string
 }
 
 const pitchNames: Record<string, string> = {
@@ -21,6 +30,17 @@ const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL || "/api"
 ).replace(/\/+$/, "")
 
+function ordinal(value: number): string {
+  const lastTwo = value % 100
+
+  if (lastTwo >= 11 && lastTwo <= 13) {
+    return `${value}th`
+  }
+
+  const suffix = { 1: "st", 2: "nd", 3: "rd" }[value % 10] ?? "th"
+  return `${value}${suffix}`
+}
+
 function App() {
   const [balls, setBalls] = useState(1)
   const [strikes, setStrikes] = useState(2)
@@ -34,48 +54,73 @@ function App() {
   const [error, setError] = useState("")
 
   const isFirstPitch = balls === 0 && strikes === 0
+  const topPrediction = predictions[0]
 
-  async function handlePredict(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault()
-    setLoading(true)
-    setError("")
-    setPredictions([])
+  const [submittedSituation, setSubmittedSituation] =
+    useState<Situation | null>(null)
 
-    try {
-      const response = await fetch(`${API_BASE_URL}/predict`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          balls,
-          strikes,
-          stand,
-          inning,
-          outs_when_up: outs,
-          // Match the terminal predictor's handling of a new plate appearance.
-          previous_pitch: isFirstPitch ? "START" : previousPitch,
-        }),
-      })
+  const [showWakeupMessage, setShowWakeupMessage] = useState(false)
 
-      if (!response.ok) {
-        throw new Error(`Prediction failed (HTTP ${response.status}).`)
-      }
-
-      const data = await response.json()
-      setPredictions(data.probabilities)
-    } catch (error) {
-      setError(
-        error instanceof Error ? error.message : "Could not get a prediction."
-      )
-    } finally {
-      setLoading(false)
-    }
+useEffect(() => {
+  if (!loading) {
+    return
   }
+
+  // Explain longer waits without showing a server message on every request.
+  const timer = window.setTimeout(() => {
+    setShowWakeupMessage(true)
+  }, 5000)
+
+  return () => window.clearTimeout(timer)
+}, [loading])
+
+async function handlePredict(event: SubmitEvent<HTMLFormElement>) {
+  event.preventDefault()
+
+  // Keep the displayed context identical to the request that produced it.
+  const situation: Situation = {
+    balls,
+    strikes,
+    stand,
+    inning,
+    outs_when_up: outs,
+    previous_pitch: isFirstPitch ? "START" : previousPitch,
+  }
+  setShowWakeupMessage(false)
+  setLoading(true)
+  setError("")
+  setPredictions([])
+  setSubmittedSituation(null)
+
+  try {
+    const response = await fetch(`${API_BASE_URL}/predict`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(situation),
+    })
+
+    if (!response.ok) {
+      throw new Error(`Prediction failed (HTTP ${response.status}).`)
+    }
+
+    const data = await response.json()
+    setPredictions(data.probabilities)
+    setSubmittedSituation(situation)
+  } catch (error) {
+    setError(
+      error instanceof Error
+        ? error.message
+        : "Could not get a prediction."
+    )
+  } finally {
+    setLoading(false)
+  }
+}
 
   return (
     <main>
       <h1>Pitch Predictor</h1>
       <p>Estimate Dylan Cease’s next pitch type.</p>
-
       <form onSubmit={handlePredict}>
         <fieldset disabled={loading}>
           <label>
@@ -145,6 +190,22 @@ function App() {
           </button>
         </fieldset>
       </form>
+      {loading && (
+        <div className="loading-message" role="status">
+          <span className="loading-spinner" aria-hidden="true" />
+
+          <div>
+            <p>Generating prediction…</p>
+
+            {showWakeupMessage && (
+              <p className="loading-detail">
+                The server may be waking up. Your first prediction can
+                take about a minute.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {error && <p role="alert">{error} Check that FastAPI is running.</p>}
 
@@ -152,7 +213,52 @@ function App() {
         {predictions.length > 0 && (
           <>
             <h2>Estimated probabilities</h2>
-            <p>Results for your last submitted situation.</p>
+            {submittedSituation && (
+              <div className="situation-summary">
+                <p>
+                  <strong>
+                    {submittedSituation.balls}–{submittedSituation.strikes} count
+                  </strong>
+                  {" · "}
+                  {submittedSituation.stand === "L" ? "Left-handed" : "Right-handed"} batter
+                  {" · "}
+                  {ordinal(submittedSituation.inning)} inning
+                  {" · "}
+                  {submittedSituation.outs_when_up}{" "}
+                  {submittedSituation.outs_when_up === 1 ? "out" : "outs"}
+                </p>
+
+                <p>
+                  Previous pitch:{" "}
+                  {submittedSituation.previous_pitch === "START"
+                    ? "Start of plate appearance"
+                    : submittedSituation.previous_pitch === "UNKNOWN"
+                      ? "Unknown"
+                      : pitchNames[submittedSituation.previous_pitch]
+                        ?? submittedSituation.previous_pitch}
+                </p>
+              </div>
+            )}
+            {topPrediction && (
+              <div className="top-pitch-card">
+                <div>
+                  <p className="top-pitch-label">Most likely pitch</p>
+                  <h3>
+                    {pitchNames[topPrediction.pitch_type]
+                      ?? topPrediction.pitch_type}
+                  </h3>
+                </div>
+
+                <div className="top-pitch-probability">
+                  <strong>
+                    {(topPrediction.probability * 100).toFixed(1)}%
+                  </strong>
+                  <span>Estimated probability</span>
+                </div>
+              </div>
+            )}
+
+            <h3>Pitch breakdown</h3>
             {predictions.map(({ pitch_type, probability }) => (
               <div className="prediction" key={pitch_type}>
                 <div className="prediction-label">
