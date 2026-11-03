@@ -10,7 +10,7 @@ Currently available pitchers: Dylan Cease and Zack Wheeler.
 
 The free backend may take about a minute to wake up after inactivity.
 
-![Pitch Predictor interface](docs/pitch-predictor.png)
+![Pitch Predictor interface](docs/pitch-predictor-multiple-pitchers.png)
 
 ## Features
 
