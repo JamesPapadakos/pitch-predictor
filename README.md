@@ -1,11 +1,15 @@
 # Pitch Predictor
 
-A machine learning application that estimates Dylan Cease’s next pitch type from the current game situation.
+A machine learning application that estimates an MLB pitcher’s next pitch type from the current game situation.
 
-The project includes a React interface, a FastAPI backend, and a reproducible workflow for downloading pitch data, training a model, and evaluating its predictions.
+The project includes a React interface, a FastAPI backend, and a reproducible workflow for downloading pitch data, training pitcher-specific models, and evaluating their predictions.
+
+Currently available pitchers: Dylan Cease and Zack Wheeler.
 
 **[Try the live demo](https://pitch-predictor-slfm.onrender.com/)**
+
 The free backend may take about a minute to wake up after inactivity.
+
 ![Pitch Predictor interface](docs/pitch-predictor.png)
 
 ## Features
@@ -16,9 +20,11 @@ The free backend may take about a minute to wake up after inactivity.
   - Inning
   - Outs
   - Previous pitch type
+- Select a pitcher from the available saved models.
+- View previous-pitch options based on the selected pitcher’s repertoire.
 - View ranked probabilities through a web interface or terminal.
 - Download and cache MLB Statcast data.
-- Train using five seasons of data with greater weight on recent pitches.
+- Train pitcher-specific models using up to five recent seasons, with greater weight on recent pitches.
 - Evaluate predictions chronologically against simple baselines.
 - Inspect performance by pitch type, count, and game.
 
@@ -47,15 +53,18 @@ Training uses regular-season pitches from **2022–2026**, with a one-year weigh
 
 The current data snapshot was requested through **October 27, 2026**. Training includes available pitches before October 28, 2026. The application does not automatically download live data or retrain.
 
-The saved model is stored locally at:
+Each pitcher has a separate saved model containing their name, pitch types, and training metadata:
 
-```text
-models/dylan_cease_v2.joblib
-```
+​```text
+models/pitcher_656302_v2.joblib
+models/pitcher_554430_v2.joblib
+​```
+
+The API discovers available pitchers from these saved models. Prediction requests do not download data or retrain models.
 
 ## Evaluation Results
 
-A retrospective 2026 simulation evaluated **2,895 pitches across 29 games**. Before each game, the updated predictors learned only from pitches on earlier dates.
+For **Dylan Cease**, a retrospective 2026 simulation evaluated 2,895 pitches across 29 games. Before each game, the updated predictors learned only from pitches on earlier dates..
 
 | Predictor | Accuracy | Log loss ↓ |
 | --- | ---: | ---: |
@@ -64,11 +73,20 @@ A retrospective 2026 simulation evaluated **2,895 pitches across 29 games**. Bef
 | Frozen situational baseline | 38.6% | 1.620 |
 | Updated situational baseline | 38.4% | 1.475 |
 
+For Zack Wheeler, the same evaluation procedure covered **2,649 pitches across 28 games**:
+
+| Predictor | Accuracy | Log loss ↓ |
+| --- | ---: | ---: |
+| Frozen random forest | 39.0% | 1.486 |
+| Updated random forest | **39.1%** | **1.450** |
+| Frozen situational baseline | 38.4% | 1.495 |
+| Updated situational baseline | 38.1% | 1.452 |
+
 The situational baseline estimates pitch probabilities using the count and batter handedness, with recency weighting and smoothing.
 
 Accuracy measures how often the most likely pitch matches the actual pitch. Log loss evaluates the full probability distribution; lower values are better.
 
-These results show a modest improvement over the updated situational baseline. They describe the game-by-game simulation, not an independent evaluation of the final model trained on all available data.
+The updated random forest slightly outperformed the updated situational baseline for both pitchers, although Wheeler’s log-loss difference was very small.
 
 The 2026 results were examined during development, so they should be treated as retrospective evidence rather than an untouched final test.
 
@@ -77,7 +95,7 @@ The 2026 results were examined during development, so they should be treated as 
 | Location | Purpose |
 | --- | --- |
 | `src/api.py` | API routes and request validation |
-| `src/pitch_predictor.py` | Load the saved model and produce probabilities |
+| `src/pitch_predictor.py` | Discover pitcher models and produce probabilities |
 | `src/predict.py` | Interactive terminal predictions |
 | `src/data.py` | Prepare pitch sequences and load training data |
 | `src/model.py` | Model configuration, weighting, training, and saving |
@@ -88,6 +106,7 @@ The 2026 results were examined during development, so they should be treated as 
 | `frontend/` | React interface |
 | `data/` | Local datasets and evaluation outputs |
 | `models/` | Local saved models |
+| `tests/` | Automated data, model, and API tests |
 
 ## Local Setup
 
@@ -117,28 +136,27 @@ Install the Python dependencies:
 python -m pip install -r requirements.txt
 ```
 
-### 2. Prepare data and train
+### 2. Prepare data and train (optional)
+
+Saved models for Dylan Cease and Zack Wheeler are included in the repository, so you can skip this step to run the application.
+
+To download data and retrain a pitcher’s model:
 
 ```bash
-python -m scripts.data
-python -m scripts.train
+python -m scripts.data --pitcher-id 656302
+python -m scripts.train --pitcher-id 656302
 ```
 
-The data command reuses cached downloads when available and creates:
+Use `554430` for Zack Wheeler. Omitting `--pitcher-id` defaults to Dylan Cease.
+
+Downloads are cached by pitcher and season. For Cease, the prepared dataset and saved model are stored at:
 
 ```text
-data/dylan_cease_2022_2026_prepared.csv
+data/pitchers/656302/prepared_2022_2026.csv
+models/pitcher_656302_v2.joblib
 ```
 
-The training command saves the model to:
-
-```text
-models/dylan_cease_v2.joblib
-```
-
-Downloading requires internet access. Datasets and model artifacts are not included in the repository.
-
-If you already have the saved v2 model locally, you can skip this step to run the app.
+Downloading data and initially retrieving a pitcher’s name require internet access. Local datasets and evaluation outputs are excluded from Git.
 
 ### 3. Start the backend
 
@@ -168,6 +186,24 @@ The frontend development server forwards `/api` requests to the backend on port 
 
 The development environment used Node.js 24.
 
+## Adding a Pitcher
+
+Use the pitcher’s MLB player ID with the existing commands:
+
+```bash
+python -m scripts.data --pitcher-id <MLB_PLAYER_ID>
+python -m scripts.train --pitcher-id <MLB_PLAYER_ID>
+python -m scripts.evaluate --pitcher-id <MLB_PLAYER_ID>
+```
+
+Replace `<MLB_PLAYER_ID>` with the numeric ID.
+
+Training retrieves and caches the pitcher’s name and saves a separate model. The API discovers that model, and the frontend includes the pitcher in its dropdown after refreshing the page.
+
+Evaluation requires both historical training data and games in the evaluation season.
+
+To include the new model in deployment, add an exception for its exact filename beneath `models/*` in `.gitignore`, then commit the model with the application changes.
+
 ## Terminal Predictions
 
 With the Python environment active, run from the project root:
@@ -176,30 +212,34 @@ With the Python environment active, run from the project root:
 python -m src.predict
 ```
 
-Enter the game situation when prompted to receive ranked pitch probabilities.
+Enter the game situation when prompted to receive ranked pitch probabilities for Dylan Cease. Pitcher selection is currently available through the web interface and API.
 
 ## Evaluation
 
-Run the chronological simulation and prediction diagnostics:
+Run the chronological simulation and prediction diagnostics for a pitcher:
 
 ```bash
-python -m scripts.evaluate
+python -m scripts.evaluate --pitcher-id 656302
 ```
 
 Inspect existing evaluation outputs without retraining the simulation models:
 
 ```bash
-python -m scripts.evaluate --diagnostics-only
+python -m scripts.evaluate --pitcher-id 656302 --diagnostics-only
 ```
 
-Evaluation produces:
+Use `554430` for Zack Wheeler. Omitting `--pitcher-id` defaults to Dylan Cease.
 
-- `data/season_simulation_summary.csv`
-- `data/season_simulation_by_game.csv`
-- `data/season_simulation_predictions.csv`
-- `data/diagnostics_by_count.csv`
+Outputs are saved separately for each pitcher. For Cease:
 
-Evaluation does not overwrite the application’s saved model.
+```text
+data/pitchers/656302/evaluation/season_simulation_summary.csv
+data/pitchers/656302/evaluation/season_simulation_by_game.csv
+data/pitchers/656302/evaluation/season_simulation_predictions.csv
+data/pitchers/656302/evaluation/diagnostics_by_count.csv
+```
+
+Evaluation does not overwrite the application’s saved models.
 
 ## Frontend Checks
 
@@ -220,13 +260,14 @@ python -m pytest -q
 ```
 
 Tests cover pitch sequencing, duplicate detection, recency weighting,
-API responses, invalid inputs, and missing-model handling.
+pitcher-specific data and model metadata, cached player names,
+API pitcher selection, invalid inputs, and missing-model handling.
 
 ## Limitations
 
-- The current application supports Dylan Cease only.
+- The deployed application currently provides models for only Dylan Cease and Zack Wheeler.
 - Batter handedness is included, but individual batter identity is not.
-- The model’s most likely predictions strongly favor fastballs and sliders.
+- The models’ most likely predictions favor frequently thrown pitches, with weak recall for several less common pitch types.
 - Estimates for less common pitches and rare counts can be unreliable.
 - Pitch probabilities have not been established as calibrated.
 - Pitcher tendencies can change over time.
@@ -234,11 +275,11 @@ API responses, invalid inputs, and missing-model handling.
 
 ## Possible Next Steps
 
-- Support additional pitchers and individual batter information.
+- Expand the available pitcher models.
+- Incorporate individual batter information.
 - Evaluate on newly available games.
 - Improve probability estimates for less common pitches and rare counts.
-- Improve reproducibility through dependency pinning and dataset versioning.
-- Deploy the frontend and backend.
+- Version datasets to improve reproducibility.
 
 ## Data Source
 

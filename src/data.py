@@ -1,9 +1,16 @@
 import pandas as pd
+import json
+from urllib.request import urlopen
 
-from src.model import AS_OF, DATA_DIR, FEATURES, PITCH_TYPES, TARGET
+from src.model import (
+    AS_OF,
+    DATA_DIR,
+    DEFAULT_PITCHER_ID,
+    FEATURES,
+    PITCH_TYPES,
+    TARGET,
+)
 
-
-PREPARED_NAME = "dylan_cease_2022_2026_prepared.csv"
 CURRENT_RAW_NAME = "dylan_cease_2026_through_2026-10-27.csv"
 
 SORT_COLUMNS = [
@@ -19,6 +26,56 @@ PITCH_KEYS = [
     "pitch_number",
 ]
 
+def pitcher_data_dir(pitcher_id, data_dir=DATA_DIR):
+    if pitcher_id <= 0:
+        raise ValueError("Pitcher ID must be a positive integer.")
+
+    return data_dir / "pitchers" / str(pitcher_id)
+
+def get_pitcher_name(pitcher_id, data_dir=DATA_DIR):
+    folder = pitcher_data_dir(pitcher_id, data_dir)
+    path = folder / "player.json"
+
+    if path.exists():
+        record = json.loads(path.read_text(encoding="utf-8"))
+    else:
+        url = f"https://statsapi.mlb.com/api/v1/people/{pitcher_id}"
+
+        with urlopen(url, timeout=15) as response:
+            payload = json.load(response)
+
+        people = payload.get("people", [])
+
+        if len(people) != 1:
+            raise ValueError(
+                f"Could not identify MLB player {pitcher_id}."
+            )
+
+        record = {
+            "pitcher_id": people[0].get("id"),
+            "pitcher_name": people[0].get("fullName"),
+        }
+
+    name = record.get("pitcher_name")
+
+    if (
+        record.get("pitcher_id") != pitcher_id
+        or not isinstance(name, str)
+        or not name.strip()
+    ):
+        raise ValueError(
+            f"Invalid player metadata for pitcher {pitcher_id}."
+        )
+
+    # Cache only validated metadata so later training can work offline.
+    if not path.exists():
+        folder.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(record, indent=2),
+            encoding="utf-8",
+        )
+
+    return name.strip()
 
 def validate_prepared(data):
     required = ["game_date", *FEATURES, TARGET]
@@ -39,16 +96,16 @@ def validate_prepared(data):
         )
 
 
-def prepare_pitches(raw):
+def prepare_pitches(raw, pitcher_id=DEFAULT_PITCHER_ID):
     pitches = raw.loc[raw["game_type"] == "R"].copy()
     pitches["game_date"] = pd.to_datetime(pitches["game_date"])
 
     if (
         pitches["pitcher"].isna().any()
-        or not pitches["pitcher"].eq(656302).all()
+        or not pitches["pitcher"].eq(pitcher_id).all()
     ):
         raise ValueError(
-            "Expected only Dylan Cease's pitches (MLB ID 656302)."
+            f"Expected only pitches from pitcher {pitcher_id}."
         )
 
     if pitches.duplicated(PITCH_KEYS).any():
@@ -81,55 +138,41 @@ def prepare_pitches(raw):
     return prepared
 
 
-def load_training_data(data_dir=DATA_DIR):
-    prepared_path = data_dir / PREPARED_NAME
+def load_training_data(
+    data_dir=DATA_DIR,
+    pitcher_id=DEFAULT_PITCHER_ID,
+):
+    folder = pitcher_data_dir(pitcher_id, data_dir)
+    first_year = AS_OF.year - 4
 
-    if prepared_path.exists():
-        data = pd.read_csv(
-            prepared_path,
-            parse_dates=["game_date"],
-        )
-    else:
-        # Support existing downloads while moving to one prepared snapshot.
-        history_path = (
-            data_dir / "dylan_cease_2021_2025_prepared.csv"
-        )
-        current_path = data_dir / CURRENT_RAW_NAME
+    path = folder / f"prepared_{first_year}_{AS_OF.year}.csv"
 
-        if not history_path.exists() or not current_path.exists():
-            raise FileNotFoundError(
-                "Missing training data. Expected the prepared snapshot "
-                "or the existing historical and 2026 files."
-            )
-
-        history = pd.read_csv(
-            history_path,
-            parse_dates=["game_date"],
-        )
-        current = prepare_pitches(pd.read_csv(current_path))
-
-        data = pd.concat(
-            [history, current],
-            ignore_index=True,
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Missing prepared data for pitcher {pitcher_id}. "
+            f"Run python -m scripts.data --pitcher-id {pitcher_id} first."
         )
 
-    # Count the prediction year as one of the five calendar seasons.
+    data = pd.read_csv(path, parse_dates=["game_date"])
+
+    # Check the contents as well as the folder to prevent pitcher mix-ups.
+    if (
+        "pitcher" not in data.columns
+        or data["pitcher"].isna().any()
+        or not data["pitcher"].eq(pitcher_id).all()
+    ):
+        raise ValueError(
+            f"Prepared data must contain only pitcher {pitcher_id}. "
+            "Regenerate it with the data command."
+        )
+
     data = data[
-        data["game_date"].dt.year.between(
-            AS_OF.year - 4, AS_OF.year
-        )
+        data["game_date"].dt.year.between(first_year, AS_OF.year)
         & (data["game_date"] < AS_OF)
     ].copy()
 
     data["season"] = data["game_date"].dt.year
-
     validate_prepared(data)
 
-    expected_seasons = set(range(AS_OF.year - 4, AS_OF.year + 1))
-
-    if set(data["season"]) != expected_seasons:
-        raise ValueError(
-            "Expected data from every season, 2022 through 2026."
-        )
-
+    # Five seasons is a maximum; some pitchers have a shorter MLB history.
     return data.sort_values(SORT_COLUMNS)

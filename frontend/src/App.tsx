@@ -7,6 +7,14 @@ type Prediction = {
   probability: number
 }
 
+type Pitcher = {
+  pitcher_id: number
+  name: string
+  pitch_types: string[]
+  training_start: string
+  training_end: string
+}
+
 type Situation = {
   balls: number
   strikes: number
@@ -17,13 +25,24 @@ type Situation = {
 }
 
 const pitchNames: Record<string, string> = {
-  FF: "Four-seam fastball",
-  SL: "Slider",
-  KC: "Knuckle curve",
   CH: "Changeup",
+  CS: "Slow curve",
+  CU: "Curveball",
+  EP: "Eephus",
+  FA: "Fastball",
   FC: "Cutter",
+  FF: "Four-seam fastball",
+  FO: "Forkball",
+  FS: "Splitter",
+  FT: "Two-seam fastball",
+  GY: "Gyroball",
+  KC: "Knuckle curve",
+  KN: "Knuckleball",
+  SC: "Screwball",
   SI: "Sinker",
+  SL: "Slider",
   ST: "Sweeper",
+  SV: "Slurve",
 }
 
 const API_BASE_URL = (
@@ -44,10 +63,27 @@ function ordinal(value: number): string {
 function App() {
   const [balls, setBalls] = useState(1)
   const [strikes, setStrikes] = useState(2)
-  const [stand, setStand] = useState("L")
+  const [stand, setStand] = useState("R")
   const [inning, setInning] = useState(6)
   const [outs, setOuts] = useState(1)
   const [previousPitch, setPreviousPitch] = useState("FF")
+  const [pitchers, setPitchers] = useState<Pitcher[]>([])
+  const [pitcherId, setPitcherId] = useState(656302)
+  const [pitchersLoading, setPitchersLoading] = useState(true)
+  const [pitchersError, setPitchersError] = useState("")
+  const [submittedPitcher, setSubmittedPitcher] =
+    useState<Pitcher | null>(null)
+
+  const selectedPitcher = pitchers.find(
+    (pitcher) => pitcher.pitcher_id === pitcherId
+  )
+
+  // Keep the previous pitch valid when switching between repertoires.
+  const availablePreviousPitch =
+    previousPitch === "UNKNOWN" ||
+    selectedPitcher?.pitch_types.includes(previousPitch)
+      ? previousPitch
+      : "UNKNOWN"
 
   const [predictions, setPredictions] = useState<Prediction[]>([])
   const [loading, setLoading] = useState(false)
@@ -62,7 +98,53 @@ function App() {
   const [showWakeupMessage, setShowWakeupMessage] = useState(false)
 
 useEffect(() => {
-  if (!loading) {
+  const controller = new AbortController()
+
+  async function loadPitchers() {
+    try {
+      const response = await fetch(`${API_BASE_URL}/pitchers`, {
+        signal: controller.signal,
+      })
+
+      if (!response.ok) {
+        throw new Error(`Could not load pitchers (HTTP ${response.status}).`)
+      }
+
+      const available: Pitcher[] = await response.json()
+
+      if (available.length === 0) {
+        throw new Error("No pitchers are currently available.")
+      }
+
+      if (controller.signal.aborted) return
+
+      setPitchers(available)
+      setPitcherId(
+        available.find((pitcher) => pitcher.pitcher_id === 656302)
+          ?.pitcher_id ?? available[0].pitcher_id
+      )
+    } catch (error) {
+      if (controller.signal.aborted) return
+
+      setPitchersError(
+        error instanceof Error
+          ? error.message
+          : "Could not load pitchers."
+      )
+    } finally {
+      if (!controller.signal.aborted) {
+        setPitchersLoading(false)
+      }
+    }
+  }
+
+  void loadPitchers()
+
+  return () => controller.abort()
+}, [])
+
+useEffect(() => {
+  if (!loading && !pitchersLoading) {
     return
   }
 
@@ -72,10 +154,12 @@ useEffect(() => {
   }, 5000)
 
   return () => window.clearTimeout(timer)
-}, [loading])
+}, [loading, pitchersLoading])
 
 async function handlePredict(event: SubmitEvent<HTMLFormElement>) {
   event.preventDefault()
+  if (!selectedPitcher) return
+  const pitcher = selectedPitcher
 
   // Keep the displayed context identical to the request that produced it.
   const situation: Situation = {
@@ -84,7 +168,7 @@ async function handlePredict(event: SubmitEvent<HTMLFormElement>) {
     stand,
     inning,
     outs_when_up: outs,
-    previous_pitch: isFirstPitch ? "START" : previousPitch,
+    previous_pitch: isFirstPitch ? "START" : availablePreviousPitch,
   }
   setShowWakeupMessage(false)
   setLoading(true)
@@ -96,7 +180,10 @@ async function handlePredict(event: SubmitEvent<HTMLFormElement>) {
     const response = await fetch(`${API_BASE_URL}/predict`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(situation),
+      body: JSON.stringify({
+        ...situation,
+        pitcher_id: pitcher.pitcher_id,
+      }),
     })
 
     if (!response.ok) {
@@ -106,6 +193,7 @@ async function handlePredict(event: SubmitEvent<HTMLFormElement>) {
     const data = await response.json()
     setPredictions(data.probabilities)
     setSubmittedSituation(situation)
+    setSubmittedPitcher(pitcher)
   } catch (error) {
     setError(
       error instanceof Error
@@ -120,9 +208,39 @@ async function handlePredict(event: SubmitEvent<HTMLFormElement>) {
   return (
     <main>
       <h1>Pitch Predictor</h1>
-      <p>Estimate Dylan Cease’s next pitch type.</p>
+      <p>Choose a pitcher and estimate their next pitch.</p>
+        {pitchersError && (
+          <p role="alert">
+            {pitchersError} Refresh the page to try again.
+          </p>
+        )}
       <form onSubmit={handlePredict}>
-        <fieldset disabled={loading}>
+        <fieldset disabled={loading || pitchersLoading || !selectedPitcher}>
+          <label className="pitcher-field">
+            Pitcher
+            <select
+              value={selectedPitcher ? pitcherId : ""}
+              onChange={(event) => {
+                setPitcherId(Number(event.target.value))
+                setPredictions([])
+                setSubmittedSituation(null)
+                setSubmittedPitcher(null)
+                setError("")
+              }}
+            >
+              {!selectedPitcher && (
+                <option value="">
+                  {pitchersLoading ? "Loading pitchers…" : "No pitchers available"}
+                </option>
+              )}
+
+              {pitchers.map((pitcher) => (
+                <option key={pitcher.pitcher_id} value={pitcher.pitcher_id}>
+                  {pitcher.name}
+                </option>
+              ))}
+            </select>
+          </label>
           <label>
             Balls
             <select value={balls} onChange={(e) => setBalls(Number(e.target.value))}>
@@ -173,13 +291,15 @@ async function handlePredict(event: SubmitEvent<HTMLFormElement>) {
           <label>
             Previous pitch
             <select
-              value={isFirstPitch ? "START" : previousPitch}
+              value={isFirstPitch ? "START" : availablePreviousPitch}
               disabled={isFirstPitch}
               onChange={(e) => setPreviousPitch(e.target.value)}
             >
               <option value="START" disabled>Start of plate appearance</option>
-              {Object.entries(pitchNames).map(([code, name]) => (
-                <option key={code} value={code}>{name}</option>
+              {selectedPitcher?.pitch_types.map((code) => (
+                <option key={code} value={code}>
+                  {pitchNames[code] ?? code}
+                </option>
               ))}
               <option value="UNKNOWN">Unknown</option>
             </select>
@@ -190,16 +310,18 @@ async function handlePredict(event: SubmitEvent<HTMLFormElement>) {
           </button>
         </fieldset>
       </form>
-      {loading && (
+      {(loading || pitchersLoading) && (
         <div className="loading-message" role="status">
           <span className="loading-spinner" aria-hidden="true" />
 
           <div>
-            <p>Generating prediction…</p>
+            <p>
+              {pitchersLoading ? "Loading pitchers…" : "Generating prediction…"}
+            </p>
 
             {showWakeupMessage && (
               <p className="loading-detail">
-                The server may be waking up. Your first prediction can
+                The server may be waking up. Your first request can
                 take about a minute.
               </p>
             )}
@@ -213,6 +335,7 @@ async function handlePredict(event: SubmitEvent<HTMLFormElement>) {
         {predictions.length > 0 && (
           <>
             <h2>Estimated probabilities</h2>
+            <p>Pitcher: {submittedPitcher?.name}</p>
             {submittedSituation && (
               <div className="situation-summary">
                 <p>
@@ -273,8 +396,10 @@ async function handlePredict(event: SubmitEvent<HTMLFormElement>) {
               </div>
             ))}
             <p className="note">
-              Estimates from a model trained on Dylan Cease’s 2022–2026 games with more weight on recent pitches.
-              Probabilities are not guarantees.
+              Estimates from a model trained on {submittedPitcher?.name}’s games
+              from {submittedPitcher?.training_start} to{" "}
+              {submittedPitcher?.training_end}, with more weight on recent pitches.
+              {" "}Probabilities are not guarantees.
             </p>
           </>
         )}

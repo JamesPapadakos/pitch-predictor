@@ -1,10 +1,17 @@
 import argparse
 
 from src.evaluation import inspect_predictions, main
+from src.model import DEFAULT_PITCHER_ID
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--pitcher-id",
+        type=int,
+        default=DEFAULT_PITCHER_ID,
+        help="MLB player ID. Defaults to Dylan Cease.",
+    )
     parser.add_argument(
         "--diagnostics-only",
         action="store_true",
@@ -12,7 +19,10 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    if not args.diagnostics_only:
-        main()
+    if args.pitcher_id <= 0:
+        parser.error("--pitcher-id must be a positive integer.")
 
-    inspect_predictions()
+    if not args.diagnostics_only:
+        main(pitcher_id=args.pitcher_id)
+
+    inspect_predictions(pitcher_id=args.pitcher_id)

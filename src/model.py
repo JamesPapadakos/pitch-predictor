@@ -9,7 +9,11 @@ from sklearn.preprocessing import OneHotEncoder
 
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
-MODEL_PATH = DATA_DIR.parent / "models" / "dylan_cease_v2.joblib"
+
+MODELS_DIR = DATA_DIR.parent / "models"
+MODEL_PATH = MODELS_DIR / "dylan_cease_v2.joblib"
+
+DEFAULT_PITCHER_ID = 656302
 
 FEATURES = [
     "balls",
@@ -21,7 +25,31 @@ FEATURES = [
 ]
 
 TARGET = "pitch_type"
-PITCH_TYPES = ["CH", "FC", "FF", "KC", "SI", "SL", "ST"]
+
+#All possible pitches 
+PITCH_NAMES = {
+    "CH": "Changeup",
+    "CS": "Slow curve",
+    "CU": "Curveball",
+    "EP": "Eephus",
+    "FA": "Fastball",
+    "FC": "Cutter",
+    "FF": "Four-seam fastball",
+    "FO": "Forkball",
+    "FS": "Splitter",
+    "FT": "Two-seam fastball",
+    "GY": "Gyroball",
+    "KC": "Knuckle curve",
+    "KN": "Knuckleball",
+    "SC": "Screwball",
+    "SI": "Sinker",
+    "SL": "Slider",
+    "ST": "Sweeper",
+    "SV": "Slurve",
+}
+
+# Keep a consistent class order for probability comparisons.
+PITCH_TYPES = sorted(PITCH_NAMES)
 
 AS_OF = pd.Timestamp("2026-10-28")
 
@@ -79,11 +107,42 @@ def fit_model(data, cutoff=AS_OF):
     return model
 
 
-def save_model(model, data, path=MODEL_PATH):
+def pitcher_model_path(pitcher_id, models_dir=MODELS_DIR):
+    if pitcher_id <= 0:
+        raise ValueError("Pitcher ID must be a positive integer.")
+
+    return models_dir / f"pitcher_{pitcher_id}_v2.joblib"
+
+def save_model(
+    model,
+    data,
+    path=None,
+    *,
+    pitcher_id=DEFAULT_PITCHER_ID,
+    pitcher_name=None,
+):
+    if (
+        data.empty
+        or "pitcher" not in data.columns
+        or data["pitcher"].isna().any()
+        or not data["pitcher"].eq(pitcher_id).all()
+    ):
+        raise ValueError(
+            f"Training data must contain only pitcher {pitcher_id}."
+        )
+
+    path = (
+        pitcher_model_path(pitcher_id)
+        if path is None
+        else Path(path)
+    )
+
     bundle = {
         "model": model,
         "features": FEATURES.copy(),
-        "pitcher_id": 656302,
+        "pitcher_id": pitcher_id,
+        "pitcher_name": pitcher_name or f"Pitcher {pitcher_id}",
+        "pitch_types": model.classes_.tolist(),
         "training_games": data["game_pk"].drop_duplicates().tolist(),
         "training_start": data["game_date"].min().date().isoformat(),
         "training_end": data["game_date"].max().date().isoformat(),
@@ -94,7 +153,6 @@ def save_model(model, data, path=MODEL_PATH):
         "model_version": "v2",
     }
 
-    path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
     temporary = path.with_suffix(".joblib.tmp")
