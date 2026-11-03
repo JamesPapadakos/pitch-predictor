@@ -5,4 +5,6 @@ __pycache__/
 data/
 models/*
 !models/dylan_cease_v2.joblib
+!models/pitcher_656302_v2.joblib
+!models/pitcher_554430_v2.joblib
 .pytest_cache/

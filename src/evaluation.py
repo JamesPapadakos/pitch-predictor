@@ -1,9 +1,10 @@
 import pandas as pd
 from sklearn.metrics import accuracy_score, classification_report, log_loss
 
-from src.data import load_training_data
+from src.data import load_training_data, pitcher_data_dir
 from src.model import (
-    DATA_DIR,
+    AS_OF,
+    DEFAULT_PITCHER_ID,
     FEATURES,
     PITCH_TYPES,
     fit_model,
@@ -81,12 +82,34 @@ def score(actual, probabilities):
         ),
     }
 
-def main():
-    data = load_training_data()
-    history = data[data["season"] < 2026].copy()
-    current = data[data["season"] == 2026].copy()
+def main(pitcher_id=DEFAULT_PITCHER_ID):
+    data = load_training_data(pitcher_id=pitcher_id)
+    evaluation_year = AS_OF.year
 
-    frozen_cutoff = pd.Timestamp("2026-01-01")
+    history = data[data["season"] < evaluation_year].copy()
+    current = data[data["season"] == evaluation_year].copy()
+
+    if history.empty or current.empty:
+        raise ValueError(
+            "This evaluation needs earlier-season training data "
+            "and pitches from the evaluation year."
+        )
+
+    output_dir = pitcher_data_dir(pitcher_id) / "evaluation"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    print(f"Evaluating pitcher {pitcher_id}")
+    print(
+        f"Evaluation season: {evaluation_year} | "
+        f"{current['game_pk'].nunique()} games | "
+        f"{len(current):,} pitches"
+    )
+
+    frozen_cutoff = pd.Timestamp(
+        year=evaluation_year,
+        month=1,
+        day=1,
+    )
     frozen = fit_model(history, frozen_cutoff)
 
     collected = {
@@ -181,18 +204,18 @@ def main():
             f"log loss {scores['log_loss']:.3f}"
         )
 
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     pd.DataFrame(per_game).to_csv(
-        DATA_DIR / "season_simulation_by_game.csv",
+        output_dir / "season_simulation_by_game.csv",
         index=False,
     )
     pd.DataFrame(summary).to_csv(
-        DATA_DIR / "season_simulation_summary.csv",
+        output_dir / "season_simulation_summary.csv",
         index=False,
     )
     pd.concat(pitch_results, ignore_index=True).to_csv(
-        DATA_DIR / "season_simulation_predictions.csv",
+        output_dir / "season_simulation_predictions.csv",
         index=False,
     )
 
@@ -202,9 +225,10 @@ def main():
         "not an untouched test set."
     )
 
-def inspect_predictions():
+def inspect_predictions(pitcher_id=DEFAULT_PITCHER_ID):
+    output_dir = pitcher_data_dir(pitcher_id) / "evaluation"
     predictions = pd.read_csv(
-        DATA_DIR / "season_simulation_predictions.csv"
+        output_dir / "season_simulation_predictions.csv"
     )
 
     predictors = [
@@ -285,7 +309,7 @@ def inspect_predictions():
         )
 
     per_game = pd.read_csv(
-        DATA_DIR / "season_simulation_by_game.csv"
+        output_dir / "season_simulation_by_game.csv"
     )
     per_game = per_game[
         per_game["predictor"].isin(predictors)
@@ -301,6 +325,6 @@ def inspect_predictions():
     print((comparison * 100).round(1).to_string())
 
     count_results.to_csv(
-        DATA_DIR / "diagnostics_by_count.csv",
+        output_dir / "diagnostics_by_count.csv",
         index=False,
     )

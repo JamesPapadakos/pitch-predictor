@@ -192,3 +192,7 @@ progress {
     animation: none;
   }
 }
+
+.pitcher-field {
+  grid-column: 1 / -1;
+}
